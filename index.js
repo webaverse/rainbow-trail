@@ -653,25 +653,27 @@ export default () => {
     }
 //#################################### shockwave2 ########################################
   {
-    const localVector = new THREE.Vector3();
-    const _shake = () => {
-        localVector.setFromMatrixPosition(localPlayer.matrixWorld);
-        cameraManager.addShake( localVector, 0.5, 10, 50);
-    };
-    let wave;
-    let group = new THREE.Group();
-    (async () => {
-        const u = `${baseUrl}/assets/wave3.glb`;
-        wave = await new Promise((accept, reject) => {
-            const {gltfLoader} = useLoaders();
-            gltfLoader.load(u, accept, function onprogress() {}, reject);
-            
-        });
-        wave.scene.position.y+=0.05;
-        wave.scene.position.y=-5000;
-        wave.scene.rotation.x=Math.PI/2;
-        group.add(wave.scene);
-        app.add(group);
+        const localVector = new THREE.Vector3();
+        const _shake = () => {
+            if (narutoRunTime >= 1 && narutoRunTime <= 5) {
+                localVector.setFromMatrixPosition(localPlayer.matrixWorld);
+                cameraManager.addShake( localVector, 0.2, 30, 500);
+            }
+        };
+        let wave;
+        let group = new THREE.Group();
+        (async () => {
+            const u = `${baseUrl}/assets/wave3.glb`;
+            wave = await new Promise((accept, reject) => {
+                const {gltfLoader} = useLoaders();
+                gltfLoader.load(u, accept, function onprogress() {}, reject);
+                
+            });
+            wave.scene.position.y=-5000;
+
+            wave.scene.rotation.x=Math.PI/2;
+            group.add(wave.scene);
+            app.add(group);
         
         wave.scene.children[0].material= new THREE.ShaderMaterial({
             uniforms: {
@@ -804,38 +806,43 @@ export default () => {
         localPlayer.getWorldDirection(dum)
         dum = dum.normalize();
 
-        if(wave){
-            if(narutoRunTime>0){
-                // if(wave.scene.scale.x>10){
-                //     wave.scene.scale.set(11,11,11);
-                //     wave.scene.position.y=-5000;
+        if (wave) {
+            wave.scene.scale.set(wave.scene.scale.x+.15,wave.scene.scale.y+0.001,wave.scene.scale.z+.15);
+            wave.scene.children[0].material.uniforms.opacity.value+=0.005;
+            if (narutoRunTime > 0) {
+                // if(wave.scene.scale.x>5){
+                //     // wave.scene.scale.set(10,10,10);
+                //     // wave.scene.position.y=-5000;
                 // }
                 // else{
-                    wave.scene.scale.set(wave.scene.scale.x+.1,wave.scene.scale.y+0.0005,wave.scene.scale.z+.1);
-                    group.position.copy(localPlayer.position);
-                    localPlayer.getWorldDirection(dum)
-                    dum = dum.normalize();
-                    group.position.x-=0.2*dum.x;
-                    group.position.z-=0.2*dum.z;
-                    group.rotation.copy(localPlayer.rotation);
-                    wave.scene.position.y=-1.;
+                    //wave.scene.scale.set(wave.scene.scale.x+.15,wave.scene.scale.y+0.00075,wave.scene.scale.z+.15);
+                    if(narutoRunTime ===1){
+                        group.position.copy(localPlayer.position);
+                        localPlayer.getWorldDirection(localVector);
+                        localVector.normalize();
+                        group.position.x-=4.*localVector.x;
+                        group.position.z-=4.*localVector.z;
+                        group.rotation.copy(localPlayer.rotation);
+                        wave.scene.position.y=0;
+                        if (localPlayer.avatar) {
+                            group.position.y -= localPlayer.avatar.height;
+                            group.position.y += 0.65;
+                        }
+                        wave.scene.scale.set(1,1,1);
+                        wave.scene.children[0].material.uniforms.opacity.value=0;
+                    }
+                    
                     if(wave.scene.scale.x<=5){
                         _shake();
                         
                     }
-                    else{
-                        wave.scene.children[0].material.uniforms.opacity.value+=0.005;
-                    }
+                    
                     
                 //}
                 
-                 
+                
             }
-            else{
-                wave.scene.scale.set(1,1,1);
-                wave.scene.position.y=-5000;
-                wave.scene.children[0].material.uniforms.opacity.value=0;
-            }
+            
 
             wave.scene.children[0].material.uniforms.uTime.value=timestamp/1000;
             wave.scene.children[0].material.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight, 1);
