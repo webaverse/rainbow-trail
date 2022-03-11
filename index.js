@@ -203,7 +203,8 @@ export default () => {
         };
     
         //##################################################### material #####################################################
-        let dustMaterial= new THREE.MeshToonMaterial();
+        let dustMaterial= new THREE.MeshToonMaterial({color: 0x666666});
+        
         dustMaterial.transparent=true; 
         dustMaterial.depthWrite=false;
         dustMaterial.alphaMap=noiseMap;
@@ -329,9 +330,9 @@ export default () => {
                         opacityAttribute.setX(i, 1);
                         brokenAttribute.setX(i, Math.random()-0.8);
                         if( narutoRunTime>0 && !localPlayer.hasAction('fly') && !localPlayer.hasAction('jump')){
-                            dummy.scale.x = 0.08;
-                            dummy.scale.y = 0.08;
-                            dummy.scale.z = 0.08;
+                            dummy.scale.x = 0.1;
+                            dummy.scale.y = 0.1;
+                            dummy.scale.z = 0.1;
                         }
                         else{
                             dummy.scale.x = .00001;
@@ -353,17 +354,21 @@ export default () => {
                         info.velocity[i].divideScalar(20);
                         
                     }
-                    if (dummy.position.distanceTo(originPoint)>3.2)
-                        opacityAttribute.setX(i, opacityAttribute.getX(i)-0.04);
-                    brokenAttribute.setX(i, brokenAttribute.getX(i)+0.02);
+                    //if (dummy.position.distanceTo(originPoint)>3.2)
+                        opacityAttribute.setX(i, opacityAttribute.getX(i)-0.02);
+                    if (dummy.position.distanceTo(originPoint)>3.){
+                        brokenAttribute.setX(i, brokenAttribute.getX(i)+0.025);
+                        opacityAttribute.setX(i, opacityAttribute.getX(i)-0.02);
+                    }
+                        
                         
                     dummy.rotation.x+=0.1*(Math.random()-0.5);
                     dummy.rotation.y+=0.1*(Math.random()-0.5);
                     dummy.rotation.z+=0.1*(Math.random()-0.5);
                     
-                    dummy.scale.x*=1.03;
-                    dummy.scale.y*=1.03;
-                    dummy.scale.z*=1.03;
+                    dummy.scale.x*=1.025;
+                    dummy.scale.y*=1.025;
+                    dummy.scale.z*=1.025;
                     
                     
                     if(narutoRunTime==0){
