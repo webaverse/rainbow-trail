@@ -1167,7 +1167,7 @@ export default () => {
                 if(opacity<=0.)
                     gl_FragColor = vec4(0.9984,.4921,0.7656, light);
                 else
-                    gl_FragColor = vec4(0.3984,0.3921,0.465625, light);
+                    gl_FragColor = vec4(0.415625,0.3984,0.3921, light);
                 if(opacity<=0.)
                     gl_FragColor.a*=1.-(distance(uAvatarPos,vPos)+.5);
                 gl_FragColor.a-=opacity*0.5*distanceToCenter;
