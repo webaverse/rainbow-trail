@@ -1186,11 +1186,16 @@ export default () => {
     const mainBall = new THREE.Points(particlesGeometry, particlesMaterial);
     app.add(mainBall);
     app.updateMatrixWorld();
+    let dum = new THREE.Vector3();
     
-    
+        
     useFrame(({timestamp}) => {
+        localPlayer.getWorldDirection(dum)
+        dum = dum.normalize();
         //console.log(camera.fov)
         mainBall.position.copy(localPlayer.position);
+        mainBall.position.x-=0.2*dum.x;
+        mainBall.position.z-=0.2*dum.z;
         //mainBall.rotation.copy(localPlayer.rotation);
         if (localPlayer.avatar) {
             mainBall.position.y -= localPlayer.avatar.height;
