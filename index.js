@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 
 import metaversefile from 'metaversefile';
-
 const baseUrl = import.meta.url.replace(/(\/)[^\/\\]*$/, '$1');
 const {useApp, useFrame, useInternals, useLocalPlayer,useLoaders,useCameraManager} = metaversefile;
 
@@ -16,6 +15,7 @@ export default () => {
     const wave2 = textureLoader.load(`${baseUrl}/textures/wave2.jpeg`)
     const textureGas = textureLoader.load(`${baseUrl}/textures/gas8.jpeg`)
     const sparkleTexture = new THREE.TextureLoader().load(`${baseUrl}/textures/sparkle4.png`);
+    const noiseMap = textureLoader.load(`${baseUrl}/textures/noise.jpg`);
     
     let narutoRunTime=0;
     //################################################ trace narutoRun Time ########################################
@@ -160,28 +160,122 @@ export default () => {
     }
     //############################ dust #############################################
     {
-
+        const particleCount = 100;
         const group=new THREE.Group();
-        const particleCount = 65;
         let info = {
-            velocity: [particleCount],
-            rotate: [particleCount]
+            velocity: [particleCount]
         }
-        const acc = new THREE.Vector3(0, -0, 0);
+        let acc = new THREE.Vector3(-0.005, 0, -0.0095);
     
-        //######## object #########
+        //##################################################### get Dust geometry #####################################################
+        const identityQuaternion = new THREE.Quaternion();
+        const _getDustGeometry = geometry => {
+            //console.log(geometry)
+            const geometry2 = new THREE.BufferGeometry();
+            ['position', 'normal', 'uv'].forEach(k => {
+              geometry2.setAttribute(k, geometry.attributes[k]);
+            });
+            geometry2.setIndex(geometry.index);
+            
+            const positions = new Float32Array(particleCount * 3);
+            const positionsAttribute = new THREE.InstancedBufferAttribute(positions, 3);
+            geometry2.setAttribute('positions', positionsAttribute);
+            const quaternions = new Float32Array(particleCount * 4);
+            for (let i = 0; i < particleCount; i++) {
+              identityQuaternion.toArray(quaternions, i * 4);
+            }
+            const quaternionsAttribute = new THREE.InstancedBufferAttribute(quaternions, 4);
+            geometry2.setAttribute('quaternions', quaternionsAttribute);
+    
+            const startTimes = new Float32Array(particleCount);
+            const startTimesAttribute = new THREE.InstancedBufferAttribute(startTimes, 1);
+            geometry2.setAttribute('startTimes', startTimesAttribute);
+    
+            const opacityAttribute = new THREE.InstancedBufferAttribute(new Float32Array(particleCount), 1);
+            opacityAttribute.setUsage(THREE.DynamicDrawUsage);
+            geometry2.setAttribute('opacity', opacityAttribute);
+    
+            const brokenAttribute = new THREE.InstancedBufferAttribute(new Float32Array(particleCount), 1);
+            brokenAttribute.setUsage(THREE.DynamicDrawUsage);
+            geometry2.setAttribute('broken', brokenAttribute);
+        
+            return geometry2;
+        };
+    
+        //##################################################### material #####################################################
+        let dustMaterial= new THREE.MeshToonMaterial();
+        dustMaterial.transparent=true; 
+        dustMaterial.depthWrite=false;
+        dustMaterial.alphaMap=noiseMap;
+        //dustMaterial.blending= THREE.AdditiveBlending;
+        //dustMaterial.side=THREE.DoubleSide;
+        //dustMaterial.opacity=0.2;
+    
+        const uniforms = {
+            uTime: {
+                value: 0
+            },
+        }
+        dustMaterial.onBeforeCompile = shader => {
+            shader.uniforms.uTime = uniforms.uTime;
+            shader.vertexShader = 'attribute float opacity;attribute float broken;\n varying float vOpacity; varying float vBroken; varying vec3 vPos; \n ' + shader.vertexShader;
+            shader.vertexShader = shader.vertexShader.replace(
+              '#include <begin_vertex>',
+              ['vec3 transformed = vec3( position );', 'vOpacity = opacity; vBroken = broken; vPos = position;'].join('\n')
+            );
+            shader.fragmentShader = 'uniform float uTime; varying float vBroken; varying float vOpacity; varying vec3 vPos;\n' + shader.fragmentShader;
+            shader.fragmentShader = shader.fragmentShader
+            .replace(
+                `vec4 diffuseColor = vec4( diffuse, opacity );`,
+                `
+                  vec4 diffuseColor = vec4( diffuse, vOpacity);
+      
+                `
+            );
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <alphamap_fragment>',
+                [
+                  'float broken = abs( sin( 1.0 - vBroken ) ) - texture2D( alphaMap, vUv ).g;',
+                  'if ( broken < 0.0001 ) discard;'
+                ].join('\n')
+            );
+        };
+        
+        //##################################################### load glb #####################################################
+        //let dustGeometry;
+        let dustApp;
+        (async () => {
+            const u = `${baseUrl}/assets/smoke.glb`;
+            dustApp = await new Promise((accept, reject) => {
+                const {gltfLoader} = useLoaders();
+                gltfLoader.load(u, accept, function onprogress() {}, reject);
+                
+            });
+            dustApp.scene.traverse(o => {
+              if (o.isMesh) {
+                addInstancedMesh(o.geometry);
+              }
+            });
+            
+    
+        })();
+    
+        
+    
+        //##################################################### object #####################################################
         let mesh = null;
         let dummy = new THREE.Object3D();
     
     
-        function addInstancedMesh() {
-            mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.45, 32,32), new THREE.MeshToonMaterial({color: 0xaaaaaa, transparent:true, depthWrite:false, opacity:0.7}), particleCount);
+        function addInstancedMesh(dustGeometry) {
+            const geometry = _getDustGeometry(dustGeometry);
+            mesh = new THREE.InstancedMesh(geometry, dustMaterial, particleCount);
             group.add(mesh);
             app.add(group);
             setInstancedMeshPositions(mesh);
+            
         }
         let matrix = new THREE.Matrix4();
-        let position = new THREE.Vector3();
         function setInstancedMeshPositions(mesh1) {
             for (let i = 0; i < mesh1.count; i++) {
                 mesh.getMatrixAt(i, matrix);
@@ -191,26 +285,28 @@ export default () => {
                 dummy.position.x = (Math.random())*0.2;
                 dummy.position.y = -0.2;
                 dummy.position.z = Math.random()*5;
+                dummy.rotation.x=Math.random()*i;
+                dummy.rotation.y=Math.random()*i;
+                dummy.rotation.z=Math.random()*i;
                 info.velocity[i] = (new THREE.Vector3(
                     0,
                     0,
                     1));
                 info.velocity[i].divideScalar(20);
-                info.rotate[i] = new THREE.Vector3(
-                    Math.random() - 0.5,
-                    Math.random() - 0.5,
-                    Math.random() - 0.5);
                 dummy.updateMatrix();
                 mesh1.setMatrixAt(i, dummy.matrix);
             }
             mesh1.instanceMatrix.needsUpdate = true;
         }
-        addInstancedMesh();
+       
     
         
         let dum = new THREE.Vector3();
         let originPoint = new THREE.Vector3(0,0,0);
         useFrame(({timestamp}) => {
+    
+            
+    
             group.position.copy(localPlayer.position);
             group.rotation.copy(localPlayer.rotation);
             if (localPlayer.avatar) {
@@ -221,71 +317,205 @@ export default () => {
             dum = dum.normalize();
         
             if (mesh) {
+                const opacityAttribute = mesh.geometry.getAttribute('opacity');
+                const brokenAttribute = mesh.geometry.getAttribute('broken');
+                const startTimesAttribute = mesh.geometry.getAttribute('startTimes');
                 for (let i = 0; i < particleCount; i++) {
                     mesh.getMatrixAt(i, matrix);
-                    
-                    
-                    position.setFromMatrixPosition(matrix); // extract position form transformationmatrix
-        
-                
                     matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-                    //dummy.rotation.y = timestamp/1000 * i ;
-                
-        
-                    if (dummy.position.distanceTo(originPoint)>3) {
-                        // mesh.setMatrixAt(i, matrix);
-                        // mesh.setColorAt(i, new THREE.Color( 1.0,1.0,1.0 ));
-                        let temp=0.5+Math.random()*0.3;
-                        if(narutoRunTime>0 && !localPlayer.hasAction('jump')&& !localPlayer.hasAction('fly')){
-                            dummy.scale.x = .3;
-                            dummy.scale.y = .3;
-                            dummy.scale.z = .3;
+                    
+                    if (dummy.position.distanceTo(originPoint)>4) {
+                       
+                        opacityAttribute.setX(i, 1);
+                        brokenAttribute.setX(i, Math.random()-0.8);
+                        if( narutoRunTime>0 && !localPlayer.hasAction('fly') && !localPlayer.hasAction('jump')){
+                            dummy.scale.x = 0.08;
+                            dummy.scale.y = 0.08;
+                            dummy.scale.z = 0.08;
                         }
                         else{
                             dummy.scale.x = .00001;
                             dummy.scale.y = .00001;
                             dummy.scale.z = .00001;
+                            //opacityAttribute.setX(i, 0.01);
                         }
-                            
                         
-                        dummy.position.x = (Math.random()-0.5)*0.2;
-                        dummy.position.y = -0.1+ (Math.random()-0.5)*0.2;
-                        dummy.position.z = 0;
+                        
+                        dummy.position.x = 0;
+                        dummy.position.y = -0.1;
+                        dummy.position.z = 0.25;
+                        
                         info.velocity[i].x=0;
                         info.velocity[i].y=0;
-                        info.velocity[i].z=0.5+Math.random();
+                        info.velocity[i].z=1+Math.random();
+                        
+                            
                         info.velocity[i].divideScalar(20);
+                        
                     }
-                    if(dummy.position.distanceTo(originPoint)<2.3){
-                        dummy.scale.x*=1.01;
-                        dummy.scale.y*=1.01;
-                        dummy.scale.z*=1.01;
+                    if (dummy.position.distanceTo(originPoint)>3.2)
+                        opacityAttribute.setX(i, opacityAttribute.getX(i)-0.04);
+                    brokenAttribute.setX(i, brokenAttribute.getX(i)+0.02);
+                        
+                    dummy.rotation.x+=0.1*(Math.random()-0.5);
+                    dummy.rotation.y+=0.1*(Math.random()-0.5);
+                    dummy.rotation.z+=0.1*(Math.random()-0.5);
+                    
+                    dummy.scale.x*=1.03;
+                    dummy.scale.y*=1.03;
+                    dummy.scale.z*=1.03;
+                    
+                    
+                    if(narutoRunTime==0){
+                        // dummy.scale.x = .00001;
+                        // dummy.scale.y = .00001;
+                        // dummy.scale.z = .00001;
+                        opacityAttribute.setX(i, opacityAttribute.getX(i)-0.04);
                     }
-                    else{
-                        dummy.scale.x/=1.04;
-                        dummy.scale.y/=1.04;
-                        dummy.scale.z/=1.04;
-                    }
-                    if(narutoRunTime==0 ||  localPlayer.hasAction('jump') ||  localPlayer.hasAction('fly')){
-                        dummy.scale.x /= 1.1;
-                        dummy.scale.y /= 1.1;
-                        dummy.scale.z /= 1.1;
-                    }
-                    info.velocity[i].add(acc);
+                    //acc.x=0.005*(Math.random()-0.5);
+                    // if(dummy.position.distanceTo(originPoint)>3.5 && ( narutoRunTime==0))
+                    //     info.velocity[i].add(acc);
                     dummy.position.add(info.velocity[i]);
                     dummy.updateMatrix();
-                    
                     mesh.setMatrixAt(i, dummy.matrix);
-                    mesh.instanceMatrix.needsUpdate = true;
-        
+    
                 }
-        
-        
+                mesh.instanceMatrix.needsUpdate = true;
+                opacityAttribute.needsUpdate = true;
+                brokenAttribute.needsUpdate = true;
+                startTimesAttribute.needsUpdate = true;
+    
             }
-        group.updateMatrixWorld();
-        
+            group.updateMatrixWorld();
         });
-    }
+      }
+    // {
+
+    //     const group=new THREE.Group();
+    //     const particleCount = 65;
+    //     let info = {
+    //         velocity: [particleCount],
+    //         rotate: [particleCount]
+    //     }
+    //     const acc = new THREE.Vector3(0, -0, 0);
+    
+    //     //######## object #########
+    //     let mesh = null;
+    //     let dummy = new THREE.Object3D();
+    
+    
+    //     function addInstancedMesh() {
+    //         mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.45, 32,32), new THREE.MeshToonMaterial({color: 0xaaaaaa, transparent:true, depthWrite:false, opacity:0.7}), particleCount);
+    //         group.add(mesh);
+    //         app.add(group);
+    //         setInstancedMeshPositions(mesh);
+    //     }
+    //     let matrix = new THREE.Matrix4();
+    //     let position = new THREE.Vector3();
+    //     function setInstancedMeshPositions(mesh1) {
+    //         for (let i = 0; i < mesh1.count; i++) {
+    //             mesh.getMatrixAt(i, matrix);
+    //             dummy.scale.x = .00001;
+    //             dummy.scale.y = .00001;
+    //             dummy.scale.z = .00001;
+    //             dummy.position.x = (Math.random())*0.2;
+    //             dummy.position.y = -0.2;
+    //             dummy.position.z = Math.random()*5;
+    //             info.velocity[i] = (new THREE.Vector3(
+    //                 0,
+    //                 0,
+    //                 1));
+    //             info.velocity[i].divideScalar(20);
+    //             info.rotate[i] = new THREE.Vector3(
+    //                 Math.random() - 0.5,
+    //                 Math.random() - 0.5,
+    //                 Math.random() - 0.5);
+    //             dummy.updateMatrix();
+    //             mesh1.setMatrixAt(i, dummy.matrix);
+    //         }
+    //         mesh1.instanceMatrix.needsUpdate = true;
+    //     }
+    //     addInstancedMesh();
+    
+        
+    //     let dum = new THREE.Vector3();
+    //     let originPoint = new THREE.Vector3(0,0,0);
+    //     useFrame(({timestamp}) => {
+    //         group.position.copy(localPlayer.position);
+    //         group.rotation.copy(localPlayer.rotation);
+    //         if (localPlayer.avatar) {
+    //           group.position.y -= localPlayer.avatar.height;
+    //           group.position.y += 0.2;
+    //         }
+    //         localPlayer.getWorldDirection(dum)
+    //         dum = dum.normalize();
+        
+    //         if (mesh) {
+    //             for (let i = 0; i < particleCount; i++) {
+    //                 mesh.getMatrixAt(i, matrix);
+                    
+                    
+    //                 position.setFromMatrixPosition(matrix); // extract position form transformationmatrix
+        
+                
+    //                 matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+    //                 //dummy.rotation.y = timestamp/1000 * i ;
+                
+        
+    //                 if (dummy.position.distanceTo(originPoint)>3) {
+    //                     // mesh.setMatrixAt(i, matrix);
+    //                     // mesh.setColorAt(i, new THREE.Color( 1.0,1.0,1.0 ));
+    //                     let temp=0.5+Math.random()*0.3;
+    //                     if(narutoRunTime>0 && !localPlayer.hasAction('jump')&& !localPlayer.hasAction('fly')){
+    //                         dummy.scale.x = .3;
+    //                         dummy.scale.y = .3;
+    //                         dummy.scale.z = .3;
+    //                     }
+    //                     else{
+    //                         dummy.scale.x = .00001;
+    //                         dummy.scale.y = .00001;
+    //                         dummy.scale.z = .00001;
+    //                     }
+                            
+                        
+    //                     dummy.position.x = (Math.random()-0.5)*0.2;
+    //                     dummy.position.y = -0.1+ (Math.random()-0.5)*0.2;
+    //                     dummy.position.z = 0;
+    //                     info.velocity[i].x=0;
+    //                     info.velocity[i].y=0;
+    //                     info.velocity[i].z=0.5+Math.random();
+    //                     info.velocity[i].divideScalar(20);
+    //                 }
+    //                 if(dummy.position.distanceTo(originPoint)<2.3){
+    //                     dummy.scale.x*=1.01;
+    //                     dummy.scale.y*=1.01;
+    //                     dummy.scale.z*=1.01;
+    //                 }
+    //                 else{
+    //                     dummy.scale.x/=1.04;
+    //                     dummy.scale.y/=1.04;
+    //                     dummy.scale.z/=1.04;
+    //                 }
+    //                 if(narutoRunTime==0 ||  localPlayer.hasAction('jump') ||  localPlayer.hasAction('fly')){
+    //                     dummy.scale.x /= 1.1;
+    //                     dummy.scale.y /= 1.1;
+    //                     dummy.scale.z /= 1.1;
+    //                 }
+    //                 info.velocity[i].add(acc);
+    //                 dummy.position.add(info.velocity[i]);
+    //                 dummy.updateMatrix();
+                    
+    //                 mesh.setMatrixAt(i, dummy.matrix);
+    //                 mesh.instanceMatrix.needsUpdate = true;
+        
+    //             }
+        
+        
+    //         }
+    //     group.updateMatrixWorld();
+        
+    //     });
+    // }
     
     //########################################## fire front wave ##############################
     {
@@ -855,101 +1085,95 @@ export default () => {
         app.updateMatrixWorld();
     });
   }
-  //##################################### main ball ##################################################
+  //##################################### mainBall ####################################################
   {
-        
-    const mainBallGeometry = new THREE.SphereBufferGeometry(1.8, 32,32);
-    const instGeom = new THREE.InstancedBufferGeometry().copy(mainBallGeometry);
+    const particlesGeometry = new THREE.BufferGeometry()
+    const count = 50;
 
-    const num = 60;
-    let instPos = []; 
-    let instId = []; 
-    let instAngle = []; 
-    for (let i = 0; i < num; i++) {
-        instPos.push(0, 0, 0);
-        instId.push(i);
-        instAngle.push(0, 0, 0);
+    const positions = new Float32Array(count * 3)
+
+    for(let i = 0; i < count; i++) 
+    {
+        var theta = THREE.Math.randFloatSpread(360); 
+        var phi = THREE.Math.randFloatSpread(360); 
+
+        positions[i * 3 + 0] = 0.1*Math.sin(theta) * Math.cos(phi);
+        positions[i * 3 + 1] = 0.1*Math.sin(theta) * Math.sin(phi);
+        positions[i * 3 + 2] = 0.1*Math.cos(theta);
+
     }
-    instGeom.setAttribute("instPos", new THREE.InstancedBufferAttribute(new Float32Array(instPos), 3));
-    instGeom.setAttribute("instId", new THREE.InstancedBufferAttribute(new Float32Array(instId), 1));
-    instGeom.setAttribute("instAngle", new THREE.InstancedBufferAttribute(new Float32Array(instAngle), 3));
-    instGeom.instanceCount = num;
+    particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
 
-
-    const mainballMaterial = new THREE.ShaderMaterial({
+    const particlesMaterial = new THREE.ShaderMaterial({
         uniforms: {
-            sphereNum: { value: num },
-            uTime: { value: 0 },
-            random: { value: 0 },
-            opacity: { value: 0 },
-            size: { value: 1 }
+            opacity: {
+                value: 0,
+            },
+            uPixelRatio: { 
+                value: Math.min(window.devicePixelRatio, 2) 
+            },
+            uSize: { 
+                value: 1 
+            },
+            uAvatarPos:{
+                value: new THREE.Vector3(0,0,0)
+            },
+            uCameraFov:{
+                value: 1
+            }
+
         },
-        vertexShader: `
+        vertexShader: `\
+            
             ${THREE.ShaderChunk.common}
             ${THREE.ShaderChunk.logdepthbuf_pars_vertex}
-            uniform float uTime;
-            uniform float size;
-            uniform float sphereNum;
-
-            attribute vec3 instPos;
-            attribute vec3 instAngle;
-            attribute float instId;
-        
+            
+            uniform float uPixelRatio;
+            uniform float uSize;
+            uniform float uCameraFov;
+            
             varying vec2 vUv;
-            varying float vId;
+            varying vec3 vPos;
             
-            
-            void main() {
-                vUv=uv;
-                vId=instId;
-                vec3 pos = vec3(position);
-                pos += instPos;
-                if(vId<=32.){
-                    pos*=(instId*instId*instId*instId)/(sphereNum*sphereNum*sphereNum*sphereNum)+0.18;
-                }
-                else
-                    pos*=(instId*instId)/(sphereNum*sphereNum);
-                pos*=size;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos,1.0);
-                ${THREE.ShaderChunk.logdepthbuf_vertex}
+            void main() { 
+            gl_PointSize = (1000.)*uSize;
+            gl_PointSize *= (uCameraFov);
+            vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+            vPos=modelPosition.xyz;
+            vec4 viewPosition = viewMatrix * modelPosition;
+            vec4 projectionPosition = projectionMatrix * viewPosition;
+            gl_Position = projectionPosition;
+
+            vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+            bool isPerspective = ( projectionMatrix[ 2 ][ 3 ] == - 1.0 );
+                if ( isPerspective ) gl_PointSize *= (1.0 / - viewPosition.z);
+
+            ${THREE.ShaderChunk.logdepthbuf_vertex}
             }
         `,
-        fragmentShader: `
-            ${THREE.ShaderChunk.logdepthbuf_pars_fragment}
-            uniform float uTime;
-            uniform float opacity;
-            uniform float random;
-            uniform float sphereNum;
+        fragmentShader: `\
             
-            varying vec2 vUv;
-            varying float vId;
+            
+            ${THREE.ShaderChunk.logdepthbuf_pars_fragment}
+            
+            varying vec3 vPos;
+            uniform vec3 uAvatarPos;
+            uniform float opacity;
             
             void main() {
-                if(vId<=52.){
-                    gl_FragColor=vec4(0.9984,.4921,0.7656,(0.9-((vId*vId)/(sphereNum*sphereNum))));
-                    if(vId>=33.99)
-                        gl_FragColor.a/=10.5;
-                    else{
-                        gl_FragColor.a/=1.2;
-                    }
-                        
-                }   
-                else{
-                    gl_FragColor=vec4(0.9984,.4921,0.7656, 0.003*(vId/sphereNum));
-                    gl_FragColor.a/=50.;
-                }
-                if(vId>=23.99){
-                    gl_FragColor.a*=((vId*vId)/(sphereNum*sphereNum))*0.9;
-                }
-                if(vId<23.99){
-                    gl_FragColor.a*=0.05*((vId*vId)/(sphereNum*sphereNum));
-                }
-                if(vId>=43.99){
-                    gl_FragColor.a*=((vId*vId)/(sphereNum*sphereNum))*0.6;
-                }
-                gl_FragColor.a*=opacity;
+            
+                float distanceToCenter = distance(gl_PointCoord, vec2(0.5));
+                float light = 0.05 / distanceToCenter - 0.1;
+                if(opacity<=0.)
+                    gl_FragColor = vec4(0.9984,.4921,0.7656, light);
+                else
+                    gl_FragColor = vec4(0.3984,0.3921,0.465625, light);
+                if(opacity<=0.)
+                    gl_FragColor.a*=1.-(distance(uAvatarPos,vPos)+.5);
+                gl_FragColor.a-=opacity*0.5*distanceToCenter;
+                gl_FragColor.xyz-=opacity*.8;
+            
                 ${THREE.ShaderChunk.logdepthbuf_fragment}
-                
             }
         `,
         side: THREE.DoubleSide,
@@ -957,55 +1181,204 @@ export default () => {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
     });
+    
 
-    const mainBall = new THREE.Mesh(instGeom, mainballMaterial);
-    const group = new THREE.Group();
-    group.add(mainBall)
-    app.add(group);
-    const localVector = new THREE.Vector3();
+    const mainBall = new THREE.Points(particlesGeometry, particlesMaterial);
+    app.add(mainBall);
+    app.updateMatrixWorld();
+    
+    
     useFrame(({timestamp}) => {
-
-        group.rotation.copy(localPlayer.rotation);
-        group.position.copy(localPlayer.position);
-        localPlayer.getWorldDirection(localVector)
-        localVector.normalize();
-        group.position.x-=.1*localVector.x;
-        group.position.z-=.1*localVector.z;
-
-        
+        //console.log(camera.fov)
+        mainBall.position.copy(localPlayer.position);
+        //mainBall.rotation.copy(localPlayer.rotation);
         if (localPlayer.avatar) {
-            group.position.y -= localPlayer.avatar.height;
-            group.position.y += 0.65;
+            mainBall.position.y -= localPlayer.avatar.height;
+            mainBall.position.y += 0.65;
         }
-       
-        if(narutoRunTime==0){
-            mainballMaterial.uniforms.opacity.value/=1.05;
-            mainballMaterial.uniforms.size.value/=1.01;
-        }
-        else if(narutoRunTime==1){
-            mainballMaterial.uniforms.opacity.value=1;
-            mainballMaterial.uniforms.size.value=4.5;
-            
-        }
-        else if(narutoRunTime>1 ){
-            if(mainballMaterial.uniforms.size.value>1){
-                mainballMaterial.uniforms.size.value/=1.05;
+        if(narutoRunTime>0){
+            if(narutoRunTime===1){
+                mainBall.material.uniforms.uSize.value=4.5;
             }
             else{
-                mainballMaterial.uniforms.size.value=1;
+                if(mainBall.material.uniforms.uSize.value>1){
+                    mainBall.material.uniforms.uSize.value/=1.1;
+                }
+                else{
+                    mainBall.material.uniforms.uSize.value=1;
+                }
             }
-            
+            mainBall.scale.x=1;
+            mainBall.scale.y=1;
+            mainBall.scale.z=1;
+            mainBall.material.uniforms.opacity.value=0;
         }
-        // else if(narutoRunTime>=10){
-        //     electronicball.update(timeDiff, Electronicball.UPDATES.LATE);
-            
-        // }
+        else{
+            mainBall.scale.x-=0.1;
+            mainBall.scale.y-=0.1;
+            mainBall.scale.z-=0.1;
+            mainBall.material.uniforms.opacity.value+=0.02;
+        }
         
-        mainballMaterial.uniforms.uTime.value=timestamp/100000;
+
+       
+        mainBall.material.uniforms.uAvatarPos.value=mainBall.position;
+        mainBall.material.uniforms.uCameraFov.value=Math.pow(60/camera.fov,1.45);
         app.updateMatrixWorld();
-    
+       
     });
 }
+  //##################################### main ball ##################################################
+//   {
+        
+//     const mainBallGeometry = new THREE.SphereBufferGeometry(1.8, 32,32);
+//     const instGeom = new THREE.InstancedBufferGeometry().copy(mainBallGeometry);
+
+//     const num = 60;
+//     let instPos = []; 
+//     let instId = []; 
+//     let instAngle = []; 
+//     for (let i = 0; i < num; i++) {
+//         instPos.push(0, 0, 0);
+//         instId.push(i);
+//         instAngle.push(0, 0, 0);
+//     }
+//     instGeom.setAttribute("instPos", new THREE.InstancedBufferAttribute(new Float32Array(instPos), 3));
+//     instGeom.setAttribute("instId", new THREE.InstancedBufferAttribute(new Float32Array(instId), 1));
+//     instGeom.setAttribute("instAngle", new THREE.InstancedBufferAttribute(new Float32Array(instAngle), 3));
+//     instGeom.instanceCount = num;
+
+
+//     const mainballMaterial = new THREE.ShaderMaterial({
+//         uniforms: {
+//             sphereNum: { value: num },
+//             uTime: { value: 0 },
+//             random: { value: 0 },
+//             opacity: { value: 0 },
+//             size: { value: 1 }
+//         },
+//         vertexShader: `
+//             ${THREE.ShaderChunk.common}
+//             ${THREE.ShaderChunk.logdepthbuf_pars_vertex}
+//             uniform float uTime;
+//             uniform float size;
+//             uniform float sphereNum;
+
+//             attribute vec3 instPos;
+//             attribute vec3 instAngle;
+//             attribute float instId;
+        
+//             varying vec2 vUv;
+//             varying float vId;
+            
+            
+//             void main() {
+//                 vUv=uv;
+//                 vId=instId;
+//                 vec3 pos = vec3(position);
+//                 pos += instPos;
+//                 if(vId<=32.){
+//                     pos*=(instId*instId*instId*instId)/(sphereNum*sphereNum*sphereNum*sphereNum)+0.18;
+//                 }
+//                 else
+//                     pos*=(instId*instId)/(sphereNum*sphereNum);
+//                 pos*=size;
+//                 gl_Position = projectionMatrix * modelViewMatrix * vec4(pos,1.0);
+//                 ${THREE.ShaderChunk.logdepthbuf_vertex}
+//             }
+//         `,
+//         fragmentShader: `
+//             ${THREE.ShaderChunk.logdepthbuf_pars_fragment}
+//             uniform float uTime;
+//             uniform float opacity;
+//             uniform float random;
+//             uniform float sphereNum;
+            
+//             varying vec2 vUv;
+//             varying float vId;
+            
+//             void main() {
+//                 if(vId<=52.){
+//                     gl_FragColor=vec4(0.9984,.4921,0.7656,(0.9-((vId*vId)/(sphereNum*sphereNum))));
+//                     if(vId>=33.99)
+//                         gl_FragColor.a/=10.5;
+//                     else{
+//                         gl_FragColor.a/=1.2;
+//                     }
+                        
+//                 }   
+//                 else{
+//                     gl_FragColor=vec4(0.9984,.4921,0.7656, 0.003*(vId/sphereNum));
+//                     gl_FragColor.a/=50.;
+//                 }
+//                 if(vId>=23.99){
+//                     gl_FragColor.a*=((vId*vId)/(sphereNum*sphereNum))*0.9;
+//                 }
+//                 if(vId<23.99){
+//                     gl_FragColor.a*=0.05*((vId*vId)/(sphereNum*sphereNum));
+//                 }
+//                 if(vId>=43.99){
+//                     gl_FragColor.a*=((vId*vId)/(sphereNum*sphereNum))*0.6;
+//                 }
+//                 gl_FragColor.a*=opacity;
+//                 ${THREE.ShaderChunk.logdepthbuf_fragment}
+                
+//             }
+//         `,
+//         side: THREE.DoubleSide,
+//         transparent: true,
+//         depthWrite: false,
+//         blending: THREE.AdditiveBlending,
+//     });
+
+//     const mainBall = new THREE.Mesh(instGeom, mainballMaterial);
+//     const group = new THREE.Group();
+//     group.add(mainBall)
+//     app.add(group);
+//     const localVector = new THREE.Vector3();
+//     useFrame(({timestamp}) => {
+
+//         group.rotation.copy(localPlayer.rotation);
+//         group.position.copy(localPlayer.position);
+//         localPlayer.getWorldDirection(localVector)
+//         localVector.normalize();
+//         group.position.x-=.1*localVector.x;
+//         group.position.z-=.1*localVector.z;
+
+        
+//         if (localPlayer.avatar) {
+//             group.position.y -= localPlayer.avatar.height;
+//             group.position.y += 0.65;
+//         }
+       
+//         if(narutoRunTime==0){
+//             mainballMaterial.uniforms.opacity.value/=1.05;
+//             mainballMaterial.uniforms.size.value/=1.01;
+//         }
+//         else if(narutoRunTime==1){
+//             mainballMaterial.uniforms.opacity.value=1;
+//             mainballMaterial.uniforms.size.value=4.5;
+            
+//         }
+//         else if(narutoRunTime>1 ){
+//             if(mainballMaterial.uniforms.size.value>1){
+//                 mainballMaterial.uniforms.size.value/=1.05;
+//             }
+//             else{
+//                 mainballMaterial.uniforms.size.value=1;
+//             }
+            
+//         }
+//         // else if(narutoRunTime>=10){
+//         //     electronicball.update(timeDiff, Electronicball.UPDATES.LATE);
+            
+//         // }
+        
+//         mainballMaterial.uniforms.uTime.value=timestamp/100000;
+//         app.updateMatrixWorld();
+    
+//     });
+// }
 //#################################### particle behind avatar 1 ###############################
 {
 
