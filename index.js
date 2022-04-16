@@ -16,27 +16,41 @@ export default () => {
     const textureGas = textureLoader.load(`${baseUrl}/textures/gas8.jpeg`)
     const sparkleTexture = new THREE.TextureLoader().load(`${baseUrl}/textures/sparkle4.png`);
     const noiseMap = textureLoader.load(`${baseUrl}/textures/noise.jpg`);
-    
+    let lastStopSw=0;
     let narutoRunTime=0;
+    let currentPos=new THREE.Vector3();
+    let currentDir=new THREE.Vector3();
+    let prePos=new THREE.Vector3();
     //################################################ trace narutoRun Time ########################################
     {
         useFrame(() => {
             
             //console.log(camera.rotation.y-localPlayer.rotation.y);
             //console.log(localPlayer.actionInterpolants.jump)
+            currentPos.x=localPlayer.position.x;
+            //currentPos.y=localPlayer.position.y;
+            currentPos.z=localPlayer.position.z;
+            currentDir.x=currentPos.x-prePos.x;
+            //currentDir.y=currentPos.y-prePos.y;
+            currentDir.z=currentPos.z-prePos.z;
+            currentDir.normalize();
             if (localPlayer.hasAction('narutoRun') ){
                     narutoRunTime++;
+                    lastStopSw=1;
                     
-                }
-                else{
-                    narutoRunTime=0;
-                    
-                }
+            }
+            else{
+                narutoRunTime=0;
+                
+            }
+            prePos.x=currentPos.x;
+            //prePos.y=currentPos.y;
+            prePos.z=currentPos.z;
                 
             
         });
     }
-    //###################################### front wave ###########################################
+    //########################################################### front wave ################################################################
     {
         const geometry = new THREE.SphereBufferGeometry(1.4, 32, 32, 0, Math.PI * 2, 0, Math.PI / 1.5);
         const material2 = new THREE.ShaderMaterial({
@@ -128,28 +142,39 @@ export default () => {
         
         const group = new THREE.Group();
         group.add(frontwave2);
-        app.add(group);
-        let dum = new THREE.Vector3();
+        
+        //let dum = new THREE.Vector3();
+        let rainbowInApp=false;
         useFrame(({timestamp}) => {
-            group.position.copy(localPlayer.position);
-            if (localPlayer.avatar) {
-                group.position.y -= localPlayer.avatar.height;
-                group.position.y += 0.65;
-            }
-            group.rotation.copy(localPlayer.rotation);
             
-            
-            localPlayer.getWorldDirection(dum)
-            dum = dum.normalize();
-            group.position.x+=0.6*dum.x;
-            group.position.z+=0.6*dum.z;
         
             if(narutoRunTime>10){
-                group.scale.set(1,1,1);
+
+                if(!rainbowInApp){
+                    app.add(group);
+                    rainbowInApp=true;
+                }
+                group.position.copy(localPlayer.position);
+                if (localPlayer.avatar) {
+                    group.position.y -= localPlayer.avatar.height;
+                    group.position.y += 0.65;
+                }
+                group.rotation.copy(localPlayer.rotation);
+                
+                
+                // localPlayer.getWorldDirection(dum)
+                // dum = dum.normalize();
+                group.position.x-=0.6*currentDir.x;
+                group.position.z-=0.6*currentDir.z;
+                //group.scale.set(1,1,1);
             
             }
             else{
-                group.scale.set(0,0,0);
+                if(rainbowInApp){
+                    app.remove(group);
+                    rainbowInApp=false;
+                }
+                //group.scale.set(0,0,0);
             }
             material2.uniforms.uTime.value = timestamp/10000;
            
@@ -158,7 +183,7 @@ export default () => {
         
         });
     }
-    //############################ dust #############################################
+    //################################################################### dust ###################################################################
     {
         const particleCount = 100;
         const group=new THREE.Group();
@@ -272,7 +297,7 @@ export default () => {
             const geometry = _getDustGeometry(dustGeometry);
             mesh = new THREE.InstancedMesh(geometry, dustMaterial, particleCount);
             group.add(mesh);
-            app.add(group);
+            //app.add(group);
             setInstancedMeshPositions(mesh);
             
         }
@@ -302,22 +327,30 @@ export default () => {
        
     
         
-        let dum = new THREE.Vector3();
+        //let dum = new THREE.Vector3();
         let originPoint = new THREE.Vector3(0,0,0);
+        let rainbowInApp=false;
         useFrame(({timestamp}) => {
     
-            
-    
-            group.position.copy(localPlayer.position);
-            group.rotation.copy(localPlayer.rotation);
-            if (localPlayer.avatar) {
-              group.position.y -= localPlayer.avatar.height;
-              group.position.y += 0.2;
+            if(narutoRunTime===1){
+                if(!rainbowInApp){
+                    //console.log('add-dust');
+                    app.add(group);
+                    rainbowInApp=true;
+                }
             }
-            localPlayer.getWorldDirection(dum)
-            dum = dum.normalize();
+    
+            
+            // localPlayer.getWorldDirection(dum)
+            // dum = dum.normalize();
         
             if (mesh) {
+                group.position.copy(localPlayer.position);
+                group.rotation.copy(localPlayer.rotation);
+                if (localPlayer.avatar) {
+                    group.position.y -= localPlayer.avatar.height;
+                    group.position.y += 0.2;
+                }
                 const opacityAttribute = mesh.geometry.getAttribute('opacity');
                 const brokenAttribute = mesh.geometry.getAttribute('broken');
                 const startTimesAttribute = mesh.geometry.getAttribute('startTimes');
@@ -391,136 +424,24 @@ export default () => {
                 startTimesAttribute.needsUpdate = true;
     
             }
+            if(lastStopSw===1  && narutoRunTime===0){
+                lastStopSw=0;
+                if(rainbowInApp){
+                    mesh.getMatrixAt(particleCount-1, matrix);
+                    matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+                    if(dummy.position.distanceTo(originPoint)>4){
+                        console.log('remove-dust');
+                        app.remove(group);
+                        rainbowInApp=false;
+                    }
+                    
+                }
+            }
+            
             group.updateMatrixWorld();
         });
       }
-    // {
-
-    //     const group=new THREE.Group();
-    //     const particleCount = 65;
-    //     let info = {
-    //         velocity: [particleCount],
-    //         rotate: [particleCount]
-    //     }
-    //     const acc = new THREE.Vector3(0, -0, 0);
     
-    //     //######## object #########
-    //     let mesh = null;
-    //     let dummy = new THREE.Object3D();
-    
-    
-    //     function addInstancedMesh() {
-    //         mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.45, 32,32), new THREE.MeshToonMaterial({color: 0xaaaaaa, transparent:true, depthWrite:false, opacity:0.7}), particleCount);
-    //         group.add(mesh);
-    //         app.add(group);
-    //         setInstancedMeshPositions(mesh);
-    //     }
-    //     let matrix = new THREE.Matrix4();
-    //     let position = new THREE.Vector3();
-    //     function setInstancedMeshPositions(mesh1) {
-    //         for (let i = 0; i < mesh1.count; i++) {
-    //             mesh.getMatrixAt(i, matrix);
-    //             dummy.scale.x = .00001;
-    //             dummy.scale.y = .00001;
-    //             dummy.scale.z = .00001;
-    //             dummy.position.x = (Math.random())*0.2;
-    //             dummy.position.y = -0.2;
-    //             dummy.position.z = Math.random()*5;
-    //             info.velocity[i] = (new THREE.Vector3(
-    //                 0,
-    //                 0,
-    //                 1));
-    //             info.velocity[i].divideScalar(20);
-    //             info.rotate[i] = new THREE.Vector3(
-    //                 Math.random() - 0.5,
-    //                 Math.random() - 0.5,
-    //                 Math.random() - 0.5);
-    //             dummy.updateMatrix();
-    //             mesh1.setMatrixAt(i, dummy.matrix);
-    //         }
-    //         mesh1.instanceMatrix.needsUpdate = true;
-    //     }
-    //     addInstancedMesh();
-    
-        
-    //     let dum = new THREE.Vector3();
-    //     let originPoint = new THREE.Vector3(0,0,0);
-    //     useFrame(({timestamp}) => {
-    //         group.position.copy(localPlayer.position);
-    //         group.rotation.copy(localPlayer.rotation);
-    //         if (localPlayer.avatar) {
-    //           group.position.y -= localPlayer.avatar.height;
-    //           group.position.y += 0.2;
-    //         }
-    //         localPlayer.getWorldDirection(dum)
-    //         dum = dum.normalize();
-        
-    //         if (mesh) {
-    //             for (let i = 0; i < particleCount; i++) {
-    //                 mesh.getMatrixAt(i, matrix);
-                    
-                    
-    //                 position.setFromMatrixPosition(matrix); // extract position form transformationmatrix
-        
-                
-    //                 matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-    //                 //dummy.rotation.y = timestamp/1000 * i ;
-                
-        
-    //                 if (dummy.position.distanceTo(originPoint)>3) {
-    //                     // mesh.setMatrixAt(i, matrix);
-    //                     // mesh.setColorAt(i, new THREE.Color( 1.0,1.0,1.0 ));
-    //                     let temp=0.5+Math.random()*0.3;
-    //                     if(narutoRunTime>0 && !localPlayer.hasAction('jump')&& !localPlayer.hasAction('fly')){
-    //                         dummy.scale.x = .3;
-    //                         dummy.scale.y = .3;
-    //                         dummy.scale.z = .3;
-    //                     }
-    //                     else{
-    //                         dummy.scale.x = .00001;
-    //                         dummy.scale.y = .00001;
-    //                         dummy.scale.z = .00001;
-    //                     }
-                            
-                        
-    //                     dummy.position.x = (Math.random()-0.5)*0.2;
-    //                     dummy.position.y = -0.1+ (Math.random()-0.5)*0.2;
-    //                     dummy.position.z = 0;
-    //                     info.velocity[i].x=0;
-    //                     info.velocity[i].y=0;
-    //                     info.velocity[i].z=0.5+Math.random();
-    //                     info.velocity[i].divideScalar(20);
-    //                 }
-    //                 if(dummy.position.distanceTo(originPoint)<2.3){
-    //                     dummy.scale.x*=1.01;
-    //                     dummy.scale.y*=1.01;
-    //                     dummy.scale.z*=1.01;
-    //                 }
-    //                 else{
-    //                     dummy.scale.x/=1.04;
-    //                     dummy.scale.y/=1.04;
-    //                     dummy.scale.z/=1.04;
-    //                 }
-    //                 if(narutoRunTime==0 ||  localPlayer.hasAction('jump') ||  localPlayer.hasAction('fly')){
-    //                     dummy.scale.x /= 1.1;
-    //                     dummy.scale.y /= 1.1;
-    //                     dummy.scale.z /= 1.1;
-    //                 }
-    //                 info.velocity[i].add(acc);
-    //                 dummy.position.add(info.velocity[i]);
-    //                 dummy.updateMatrix();
-                    
-    //                 mesh.setMatrixAt(i, dummy.matrix);
-    //                 mesh.instanceMatrix.needsUpdate = true;
-        
-    //             }
-        
-        
-    //         }
-    //     group.updateMatrixWorld();
-        
-    //     });
-    // }
     
     //########################################## fire front wave ##############################
     {
@@ -660,29 +581,40 @@ export default () => {
         plane.rotation.x=Math.PI/2;
         const group = new THREE.Group();
         group.add(plane);
-        app.add(group)
+        //app.add(group)
         app.updateMatrixWorld();
-        let dum = new THREE.Vector3();
+        //let dum = new THREE.Vector3();
+        let rainbowInApp=false;
         useFrame(({timestamp}) => {
-            group.position.copy(localPlayer.position);
-            if(localPlayer.avatar){
-                group.position.y -= localPlayer.avatar.height;
-                group.position.y += 0.65;
-            }
-            group.rotation.copy(localPlayer.rotation);
             
-            localPlayer.getWorldDirection(dum)
-            dum = dum.normalize();
-            group.position.x+=0.6*dum.x;
-            group.position.z+=0.6*dum.z;
             if(narutoRunTime>10){
-                group.scale.set(1,1,1);
+                if(!rainbowInApp){
+                    app.add(group);
+                    rainbowInApp=true;
+                }
+                group.position.copy(localPlayer.position);
+                if(localPlayer.avatar){
+                    group.position.y -= localPlayer.avatar.height;
+                    group.position.y += 0.65;
+                }
+                group.rotation.copy(localPlayer.rotation);
+                
+                //localPlayer.getWorldDirection(dum)
+                //dum = dum.normalize();
+                group.position.x-=0.6*currentDir.x;
+                group.position.z-=0.6*currentDir.z;
+                material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight, 1);
+                material.uniforms.time.value = timestamp *1.;
+                //group.scale.set(1,1,1);
             }
             else{
-                group.scale.set(0,0,0);
+                if(rainbowInApp){
+                    app.remove(group);
+                    rainbowInApp=false;
+                }
+                //group.scale.set(0,0,0);
             }
-            material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight, 1);
-            material.uniforms.time.value = timestamp *1.;
+            
             
             app.updateMatrixWorld();
 
@@ -806,70 +738,15 @@ export default () => {
       });
       
       let plane=new THREE.Mesh(planeGeometry,material);
-      app.add(plane);
+      //app.add(plane);
       plane.position.y=1;
       plane.frustumCulled = false;
       let temp=[];
       let temp2=[];
+      let rainbowInApp=false;
       useFrame(({timestamp}) => {
         
-        for(let i=0;i<18;i++){
-            temp[i]=position[i];
-        }
-        for (let i = 0; i < planeNumber; i++){
-            if(i===0){
-                position[0] = localPlayer.position.x;
-                position[1] = localPlayer.position.y-1.3;
-                position[2] = localPlayer.position.z;
-                if (localPlayer.avatar) {
-                    position[1] -= localPlayer.avatar.height;
-                    position[1] += 1.18;
-                }
-                position[3] = localPlayer.position.x;
-                position[4] = localPlayer.position.y-1.7;
-                position[5] = localPlayer.position.z;
-                if (localPlayer.avatar) {
-                    position[4] -= localPlayer.avatar.height;
-                    position[4] += 1.18;
-                }
-            
-                position[6] = temp[0];
-                position[7] = temp[1];
-                position[8] = temp[2];
-            
-                position[9] = temp[3];
-                position[10] = temp[4];
-                position[11] = temp[5];
-            
-                position[12] = temp[0];
-                position[13] = temp[1];
-                position[14] = temp[2];
-            
-                position[15] = localPlayer.position.x;
-                position[16] = localPlayer.position.y-1.7;
-                position[17] = localPlayer.position.z;
-                if (localPlayer.avatar) {
-                    position[16] -= localPlayer.avatar.height;
-                    position[16] += 1.18;
-                }
-            }
-            else{
-                
-                for(let j=0;j<18;j++){
-                    temp2[j]=position[i*18+j];
-                    position[i*18+j]=temp[j];
-                    temp[j]=temp2[j];
-                }
-                
-
-            }
-        }
         
-        plane.geometry.verticesNeedUpdate = true;
-        plane.geometry.dynamic = true;
-        plane.geometry.attributes.position.needsUpdate = true;
-        
-        material.uniforms.uTime.value = timestamp/1000;
         if(narutoRunTime>=10){
             material.uniforms.opacity.value = 1;
         }
@@ -878,6 +755,75 @@ export default () => {
         }
         if(narutoRunTime>0 && narutoRunTime<10){
             material.uniforms.opacity.value = 0;
+        }
+        if(material.uniforms.opacity.value>0){
+            if(!rainbowInApp){
+                app.add(plane);
+                rainbowInApp=true;
+            }
+            for(let i=0;i<18;i++){
+                temp[i]=position[i];
+            }
+            for (let i = 0; i < planeNumber; i++){
+                if(i===0){
+                    position[0] = localPlayer.position.x;
+                    position[1] = localPlayer.position.y-1.3;
+                    position[2] = localPlayer.position.z;
+                    if (localPlayer.avatar) {
+                        position[1] -= localPlayer.avatar.height;
+                        position[1] += 1.18;
+                    }
+                    position[3] = localPlayer.position.x;
+                    position[4] = localPlayer.position.y-1.7;
+                    position[5] = localPlayer.position.z;
+                    if (localPlayer.avatar) {
+                        position[4] -= localPlayer.avatar.height;
+                        position[4] += 1.18;
+                    }
+                
+                    position[6] = temp[0];
+                    position[7] = temp[1];
+                    position[8] = temp[2];
+                
+                    position[9] = temp[3];
+                    position[10] = temp[4];
+                    position[11] = temp[5];
+                
+                    position[12] = temp[0];
+                    position[13] = temp[1];
+                    position[14] = temp[2];
+                
+                    position[15] = localPlayer.position.x;
+                    position[16] = localPlayer.position.y-1.7;
+                    position[17] = localPlayer.position.z;
+                    if (localPlayer.avatar) {
+                        position[16] -= localPlayer.avatar.height;
+                        position[16] += 1.18;
+                    }
+                }
+                else{
+                    
+                    for(let j=0;j<18;j++){
+                        temp2[j]=position[i*18+j];
+                        position[i*18+j]=temp[j];
+                        temp[j]=temp2[j];
+                    }
+                    
+    
+                }
+            }
+            
+            plane.geometry.verticesNeedUpdate = true;
+            plane.geometry.dynamic = true;
+            plane.geometry.attributes.position.needsUpdate = true;
+            
+            material.uniforms.uTime.value = timestamp/1000;
+        }
+        else{
+            if(rainbowInApp){
+                app.remove(plane);
+                rainbowInApp=false;
+            }
         }
        
         
@@ -908,7 +854,7 @@ export default () => {
 
             wave.scene.rotation.x=Math.PI/2;
             group.add(wave.scene);
-            app.add(group);
+            //app.add(group);
         
         wave.scene.children[0].material= new THREE.ShaderMaterial({
             uniforms: {
@@ -1035,16 +981,22 @@ export default () => {
 
     
     app.updateMatrixWorld();
-    let dum = new THREE.Vector3();
+    //let dum = new THREE.Vector3();
+    let rainbowInApp=false;
     useFrame(({timestamp}) => {
         
-        localPlayer.getWorldDirection(dum)
-        dum = dum.normalize();
+        //localPlayer.getWorldDirection(dum)
+        //dum = dum.normalize();
 
         if (wave) {
             wave.scene.scale.set(wave.scene.scale.x+.15,wave.scene.scale.y+0.001,wave.scene.scale.z+.15);
             wave.scene.children[0].material.uniforms.opacity.value+=0.005;
             if (narutoRunTime > 0) {
+                if(!rainbowInApp){
+                    //console.log('add-shockWave');
+                    app.add(group);
+                    rainbowInApp=true;
+                }
                 // if(wave.scene.scale.x>5){
                 //     // wave.scene.scale.set(10,10,10);
                 //     // wave.scene.position.y=-5000;
@@ -1053,10 +1005,10 @@ export default () => {
                     //wave.scene.scale.set(wave.scene.scale.x+.15,wave.scene.scale.y+0.00075,wave.scene.scale.z+.15);
                     if(narutoRunTime ===1){
                         group.position.copy(localPlayer.position);
-                        localPlayer.getWorldDirection(localVector);
-                        localVector.normalize();
-                        group.position.x-=4.*localVector.x;
-                        group.position.z-=4.*localVector.z;
+                        //localPlayer.getWorldDirection(localVector);
+                        //localVector.normalize();
+                        group.position.x+=4.*currentDir.x;
+                        group.position.z+=4.*currentDir.z;
                         group.rotation.copy(localPlayer.rotation);
                         wave.scene.position.y=0;
                         if (localPlayer.avatar) {
@@ -1078,12 +1030,20 @@ export default () => {
                 
             }
             
-
-            wave.scene.children[0].material.uniforms.uTime.value=timestamp/1000;
-            wave.scene.children[0].material.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight, 1);
-            wave.scene.children[0].material.uniforms.avatarPos.x=localPlayer.position.x;
-            wave.scene.children[0].material.uniforms.avatarPos.y=localPlayer.position.y;
-            wave.scene.children[0].material.uniforms.avatarPos.z=localPlayer.position.z;
+            if(wave.scene.children[0].material.uniforms.opacity.value<1){
+                wave.scene.children[0].material.uniforms.uTime.value=timestamp/1000;
+                wave.scene.children[0].material.uniforms.iResolution.value.set(window.innerWidth, window.innerHeight, 1);
+                wave.scene.children[0].material.uniforms.avatarPos.x=localPlayer.position.x;
+                wave.scene.children[0].material.uniforms.avatarPos.y=localPlayer.position.y;
+                wave.scene.children[0].material.uniforms.avatarPos.z=localPlayer.position.z;
+            }
+            else{
+                if(rainbowInApp && narutoRunTime===0){
+                    //console.log('remove-shockWave');
+                    app.remove(group);
+                    rainbowInApp=false;
+                }
+            }
         }
         
         
@@ -1189,24 +1149,21 @@ export default () => {
     
 
     const mainBall = new THREE.Points(particlesGeometry, particlesMaterial);
-    app.add(mainBall);
+    //app.add(mainBall);
     app.updateMatrixWorld();
     let dum = new THREE.Vector3();
     
         
+    let rainbowInApp=false;
     useFrame(({timestamp}) => {
-        localPlayer.getWorldDirection(dum)
-        dum = dum.normalize();
-        //console.log(camera.fov)
-        mainBall.position.copy(localPlayer.position);
-        mainBall.position.x-=0.2*dum.x;
-        mainBall.position.z-=0.2*dum.z;
-        //mainBall.rotation.copy(localPlayer.rotation);
-        if (localPlayer.avatar) {
-            mainBall.position.y -= localPlayer.avatar.height;
-            mainBall.position.y += 0.65;
-        }
+        
+        
         if(narutoRunTime>0){
+            if(!rainbowInApp){
+                //console.log('add-mainBall');
+                app.add(mainBall);
+                rainbowInApp=true;
+            }
             if(narutoRunTime===1){
                 mainBall.material.uniforms.uSize.value=4.5;
             }
@@ -1224,21 +1181,465 @@ export default () => {
             mainBall.material.uniforms.opacity.value=0;
         }
         else{
-            mainBall.scale.x-=0.1;
-            mainBall.scale.y-=0.1;
-            mainBall.scale.z-=0.1;
-            mainBall.material.uniforms.opacity.value+=0.02;
+            if(mainBall.material.uniforms.opacity.value<1){
+                mainBall.scale.x-=0.1;
+                mainBall.scale.y-=0.1;
+                mainBall.scale.z-=0.1;
+                mainBall.material.uniforms.opacity.value+=0.02;
+            }
+            
+        }
+        if(mainBall.material.uniforms.opacity.value<1){
+            //console.log('sonic-boom-mainBall');
+            mainBall.position.copy(localPlayer.position);
+            mainBall.position.x+=0.2*currentDir.x;
+            mainBall.position.z+=0.2*currentDir.z;
+        
+            if (localPlayer.avatar) {
+                mainBall.position.y -= localPlayer.avatar.height;
+                mainBall.position.y += 0.65;
+            }
+            mainBall.material.uniforms.uAvatarPos.value=mainBall.position;
+            mainBall.material.uniforms.uCameraFov.value=Math.pow(60/camera.fov,1.45);
+        }
+        else{
+            if(rainbowInApp){
+                //console.log('remove-mainBall');
+                app.remove(mainBall);
+                rainbowInApp=false;
+            }
         }
         
 
-       
-        mainBall.material.uniforms.uAvatarPos.value=mainBall.position;
-        mainBall.material.uniforms.uCameraFov.value=Math.pow(60/camera.fov,1.45);
-        app.updateMatrixWorld();
-       
+        
+        
+        //app.updateMatrixWorld();
+        
     });
-}
-  //##################################### main ball ##################################################
+  }
+ //#################################### particle behind avatar 1 ###############################
+ {
+
+    const group=new THREE.Group();
+    const particleCount = 5;
+    let info = {
+        velocity: [particleCount],
+        rotate: [particleCount]
+    }
+    const acc = new THREE.Vector3(0, -0, 0);
+
+    //######## object #########
+    let mesh = null;
+    let dummy = new THREE.Object3D();
+
+
+    function addInstancedMesh() {
+        mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({map:sparkleTexture, transparent:true, depthWrite:false, opacity:1, blending:THREE.AdditiveBlending, side:THREE.DoubleSide}), particleCount);
+        group.add(mesh);
+        //app.add(group);
+        setInstancedMeshPositions(mesh);
+    }
+    
+    let matrix = new THREE.Matrix4();
+    let position = new THREE.Vector3();
+    function setInstancedMeshPositions(mesh1) {
+        for (let i = 0; i < mesh1.count; i++) {
+            
+            mesh.getMatrixAt(i, matrix);
+            dummy.scale.x = .00001;
+            dummy.scale.y = .00001;
+            dummy.scale.z = .00001;
+            dummy.position.x = (Math.random())*0.2;
+            dummy.position.y = -0.2;
+            dummy.position.z = Math.random()*10;
+            info.velocity[i] = (new THREE.Vector3(
+                0,
+                0,
+                1));
+            info.velocity[i].divideScalar(20);
+            info.rotate[i] = new THREE.Vector3(
+                Math.random() - 0.5,
+                Math.random() - 0.5,
+                Math.random() - 0.5);
+            dummy.updateMatrix();
+            mesh1.setMatrixAt(i, dummy.matrix);
+        }
+        mesh1.instanceMatrix.needsUpdate = true;
+    }
+    addInstancedMesh();
+
+    
+    //let dum = new THREE.Vector3();
+    let originPoint = new THREE.Vector3(0,0,0);
+    let rainbowInApp=false;
+    useFrame(({timestamp}) => {
+       
+        //localPlayer.getWorldDirection(dum)
+        //dum = dum.normalize();
+    
+        if (mesh) {
+            if(narutoRunTime>0){
+                if(!rainbowInApp){
+                    app.add(group);
+                    rainbowInApp=true;
+                }
+
+                group.position.copy(localPlayer.position);
+                group.rotation.copy(localPlayer.rotation);
+                if (localPlayer.avatar) {
+                  group.position.y -= localPlayer.avatar.height;
+                  group.position.y += 0.65;
+                }
+                for (let i = 0; i < particleCount; i++) {
+                    mesh.getMatrixAt(i, matrix);
+                    position.setFromMatrixPosition(matrix); 
+                    matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+                    
+                
+        
+                    if (dummy.position.distanceTo(originPoint)>5) {
+                    
+                        if(narutoRunTime>0){
+                            dummy.scale.x = .5;
+                            dummy.scale.y = .5;
+                            dummy.scale.z = .5;
+                        }
+                        else{
+                            dummy.scale.x = .00001;
+                            dummy.scale.y = .00001;
+                            dummy.scale.z = .00001;
+                        }
+                            
+                        
+                        dummy.position.x = (Math.random()-0.5)*0.2;
+                        dummy.position.y = (Math.random()-0.5)*0.5;
+                        dummy.position.z = 0;
+                        info.velocity[i].x=(Math.random()-0.5)*4;
+                        info.velocity[i].y=(Math.random()-0.5)*4;
+                        info.velocity[i].z=10+Math.random();
+                        info.velocity[i].divideScalar(20);
+                    }
+                    
+                    dummy.scale.x/=1.04;
+                    dummy.scale.y/=1.04;
+                    dummy.scale.z/=1.04;
+                    
+                    if(narutoRunTime==0){
+                        dummy.scale.x /= 1.1;
+                        dummy.scale.y /= 1.1;
+                        dummy.scale.z /= 1.1;
+                    }
+                    dummy.rotation.copy(camera.rotation);
+                    if(localPlayer.rotation.x==0){
+                        dummy.rotation.y-=localPlayer.rotation.y;
+                    }
+                    else{
+                        dummy.rotation.y+=localPlayer.rotation.y;
+                    }
+                    
+                    info.velocity[i].add(acc);
+                    dummy.position.add(info.velocity[i]);
+                    dummy.updateMatrix();
+                    
+                    mesh.setMatrixAt(i, dummy.matrix);
+                    mesh.instanceMatrix.needsUpdate = true;
+        
+                }
+            }
+            else{
+                if(rainbowInApp){
+                    app.remove(group);
+                    rainbowInApp=false;
+                }
+                
+            }
+            
+        }
+    group.updateMatrixWorld();
+    
+    });
+  }
+  //#################################### particle behind avatar 2 ###############################
+{
+
+    const group=new THREE.Group();
+    const particleCount = 5;
+    let info = {
+        velocity: [particleCount],
+        rotate: [particleCount]
+    }
+    const acc = new THREE.Vector3(0, -0, 0);
+
+    //######## object #########
+    let mesh = null;
+    let dummy = new THREE.Object3D();
+
+
+    function addInstancedMesh() {
+        mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 10,10), new THREE.MeshBasicMaterial({ transparent:true, depthWrite:false, opacity:1, blending:THREE.AdditiveBlending, side:THREE.DoubleSide}), particleCount);
+        group.add(mesh);
+        //app.add(group);
+        setInstancedMeshPositions(mesh);
+    }
+    
+    let matrix = new THREE.Matrix4();
+    let position = new THREE.Vector3();
+    function setInstancedMeshPositions(mesh1) {
+        for (let i = 0; i < mesh1.count; i++) {
+            
+            mesh.getMatrixAt(i, matrix);
+            dummy.scale.x = .00001;
+            dummy.scale.y = .00001;
+            dummy.scale.z = .00001;
+            dummy.position.x = (Math.random())*0.2;
+            dummy.position.y = -0.2;
+            dummy.position.z = Math.random()*10;
+            info.velocity[i] = (new THREE.Vector3(
+                0,
+                0,
+                1));
+            info.velocity[i].divideScalar(20);
+            info.rotate[i] = new THREE.Vector3(
+                Math.random() - 0.5,
+                Math.random() - 0.5,
+                Math.random() - 0.5);
+            dummy.updateMatrix();
+            mesh1.setMatrixAt(i, dummy.matrix);
+        }
+        mesh1.instanceMatrix.needsUpdate = true;
+    }
+    addInstancedMesh();
+
+    
+    //let dum = new THREE.Vector3();
+    let originPoint = new THREE.Vector3(0,0,0);
+    let color=new THREE.Color(1.0,1.0,1.0);
+    let rainbowInApp=false;
+    useFrame(({timestamp}) => {
+        
+        //localPlayer.getWorldDirection(dum)
+        //dum = dum.normalize();
+    
+        if (mesh) {
+            if(narutoRunTime>0){
+                if(!rainbowInApp){
+                    app.add(group);
+                    rainbowInApp=true;
+                }
+
+                group.position.copy(localPlayer.position);
+                group.rotation.copy(localPlayer.rotation);
+                if (localPlayer.avatar) {
+                group.position.y -= localPlayer.avatar.height;
+                group.position.y += 0.65;
+                }
+                for (let i = 0; i < particleCount; i++) {
+                    mesh.getMatrixAt(i, matrix);
+                    position.setFromMatrixPosition(matrix); 
+                    matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+                    
+                
+        
+                    if (dummy.position.distanceTo(originPoint)>5) {
+                        mesh.setMatrixAt(i, matrix);
+                        mesh.setColorAt(i, color.set(0xffffff * Math.random()));
+                        mesh.instanceMatrix.needsUpdate = true;
+                        mesh.instanceColor.needsUpdate = true;
+                        if(narutoRunTime>0){
+                            dummy.scale.x = .5;
+                            dummy.scale.y = .5;
+                            dummy.scale.z = .5;
+                        }
+                        else{
+                            dummy.scale.x = .00001;
+                            dummy.scale.y = .00001;
+                            dummy.scale.z = .00001;
+                        }
+                            
+                        
+                        dummy.position.x = (Math.random()-0.5)*0.2;
+                        dummy.position.y = (Math.random()-0.5)*0.2;
+                        dummy.position.z = 0;
+                        info.velocity[i].x=(Math.random()-0.5)*2;
+                        info.velocity[i].y=(Math.random()-0.5)*2;
+                        info.velocity[i].z=5+Math.random();
+                        info.velocity[i].divideScalar(20);
+                    }
+                    
+                    dummy.scale.x/=1.01;
+                    dummy.scale.y/=1.01;
+                    dummy.scale.z/=1.01;
+                    
+                    if(narutoRunTime==0){
+                        dummy.scale.x /= 1.1;
+                        dummy.scale.y /= 1.1;
+                        dummy.scale.z /= 1.1;
+                    }
+                    dummy.rotation.copy(camera.rotation);
+                    if(localPlayer.rotation.x==0){
+                        dummy.rotation.y-=localPlayer.rotation.y;
+                    }
+                    else{
+                        dummy.rotation.y+=localPlayer.rotation.y;
+                    }
+                    
+                    info.velocity[i].add(acc);
+                    dummy.position.add(info.velocity[i]);
+                    dummy.updateMatrix();
+                    
+                    mesh.setMatrixAt(i, dummy.matrix);
+                    mesh.instanceMatrix.needsUpdate = true;
+        
+                }
+            }
+            else{
+                if(rainbowInApp){
+                    app.remove(group);
+                    rainbowInApp=false;
+                }
+            }
+            
+        }
+    group.updateMatrixWorld();
+    
+    });
+  }
+    
+    //########################################## wind #############################################
+    {
+        const group = new THREE.Group();
+        const vertrun = `
+            ${THREE.ShaderChunk.common}
+            ${THREE.ShaderChunk.logdepthbuf_pars_vertex}
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                vec3 pos = vec3(position.x,position.y,position.z);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4( pos, 1.0 );
+                ${THREE.ShaderChunk.logdepthbuf_vertex}
+            }
+        `;
+
+        const fragrun = `
+            ${THREE.ShaderChunk.logdepthbuf_pars_fragment}
+            varying vec2 vUv;
+            uniform sampler2D perlinnoise;
+            uniform vec3 color4;
+            uniform float uTime;
+            varying vec3 vNormal;
+            vec3 rgbcol(vec3 col) {
+                return vec3(col.r/255.,col.g/255.,col.b/255.);
+            }
+            void main() {
+                vec3 noisetex = texture2D(
+                    perlinnoise,
+                    vec2(
+                        mod(1.*vUv.x+(2.),1.),
+                        mod(.5*vUv.y+(40.*uTime),1.)
+                        
+                    )
+                ).rgb;      
+                gl_FragColor = vec4(noisetex.rgb,1.0);
+                if(gl_FragColor.r >= 0.8){
+                    gl_FragColor = vec4(vec3(1.,1.,1.),(0.9-vUv.y)/2.);
+                }else{
+                    gl_FragColor = vec4(0.,0.,1.,0.);
+                }
+                gl_FragColor *= vec4(smoothstep(0.2,0.628,vUv.y));
+                ${THREE.ShaderChunk.logdepthbuf_fragment}
+            
+                
+            }
+        `;
+        let windMaterial;
+        function windEffect() {
+            const geometry = new THREE.CylinderBufferGeometry(0.5, 0.9, 5.3, 50, 50, true);
+            windMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    perlinnoise: {
+                        type: "t",
+                        value:wave2
+                    },
+                    color4: {
+                        value: new THREE.Vector3(200, 200, 200)
+                    },
+                    uTime: {
+                        type: "f",
+                        value: 0.0
+                    },
+                },
+                // wireframe:true,
+                vertexShader: vertrun,
+                fragmentShader: fragrun,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide
+            });
+            const material = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
+            const mesh = new THREE.Mesh(geometry, windMaterial);
+            mesh.setRotationFromAxisAngle( new THREE.Vector3( 1, 0, 0 ), -90 * Math.PI / 180 );
+            
+            group.add(mesh);
+           
+            // mesh.scale.set(1.5, 1.7, 1.5);
+            //app.add(group);
+        }
+        windEffect();
+        
+        
+        //let dum = new THREE.Vector3();
+        let rainbowInApp=false;
+        useFrame(({timestamp}) => {
+            
+            if(narutoRunTime>10){
+                if(!rainbowInApp){
+                    app.add(group);
+                    rainbowInApp=true;
+                }
+                //group.scale.set(1,1,1);
+                group.position.copy(localPlayer.position);
+                if (localPlayer.avatar) {
+                    group.position.y -= localPlayer.avatar.height;
+                    group.position.y += 0.65;
+                }
+                group.rotation.copy(localPlayer.rotation);
+
+                
+                //localPlayer.getWorldDirection(dum)
+                //dum = dum.normalize();
+                group.position.x-=2.2*currentDir.x;
+                group.position.z-=2.2*currentDir.z;
+                windMaterial.uniforms.uTime.value=timestamp/10000;
+            }
+            else{
+                if(rainbowInApp){
+                    app.remove(group);
+                    rainbowInApp=false;
+                }
+                //group.scale.set(0,0,0);
+            }
+            
+            
+            
+            app.updateMatrixWorld();
+
+        });
+    }
+  
+
+    app.setComponent('renderPriority', 'low');
+
+    return app;
+};
+
+
+
+
+
+
+
+//##################################### main ball ##################################################
 //   {
         
 //     const mainBallGeometry = new THREE.SphereBufferGeometry(1.8, 32,32);
@@ -1389,260 +1790,134 @@ export default () => {
     
 //     });
 // }
-//#################################### particle behind avatar 1 ###############################
-{
+// {
 
-    const group=new THREE.Group();
-    const particleCount = 5;
-    let info = {
-        velocity: [particleCount],
-        rotate: [particleCount]
-    }
-    const acc = new THREE.Vector3(0, -0, 0);
-
-    //######## object #########
-    let mesh = null;
-    let dummy = new THREE.Object3D();
-
-
-    function addInstancedMesh() {
-        mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({map:sparkleTexture, transparent:true, depthWrite:false, opacity:1, blending:THREE.AdditiveBlending, side:THREE.DoubleSide}), particleCount);
-        group.add(mesh);
-        app.add(group);
-        setInstancedMeshPositions(mesh);
-    }
+    //     const group=new THREE.Group();
+    //     const particleCount = 65;
+    //     let info = {
+    //         velocity: [particleCount],
+    //         rotate: [particleCount]
+    //     }
+    //     const acc = new THREE.Vector3(0, -0, 0);
     
-    let matrix = new THREE.Matrix4();
-    let position = new THREE.Vector3();
-    function setInstancedMeshPositions(mesh1) {
-        for (let i = 0; i < mesh1.count; i++) {
-            
-            mesh.getMatrixAt(i, matrix);
-            dummy.scale.x = .00001;
-            dummy.scale.y = .00001;
-            dummy.scale.z = .00001;
-            dummy.position.x = (Math.random())*0.2;
-            dummy.position.y = -0.2;
-            dummy.position.z = Math.random()*10;
-            info.velocity[i] = (new THREE.Vector3(
-                0,
-                0,
-                1));
-            info.velocity[i].divideScalar(20);
-            info.rotate[i] = new THREE.Vector3(
-                Math.random() - 0.5,
-                Math.random() - 0.5,
-                Math.random() - 0.5);
-            dummy.updateMatrix();
-            mesh1.setMatrixAt(i, dummy.matrix);
-        }
-        mesh1.instanceMatrix.needsUpdate = true;
-    }
-    addInstancedMesh();
-
+    //     //######## object #########
+    //     let mesh = null;
+    //     let dummy = new THREE.Object3D();
     
-    let dum = new THREE.Vector3();
-    let originPoint = new THREE.Vector3(0,0,0);
-    useFrame(({timestamp}) => {
-        group.position.copy(localPlayer.position);
-        group.rotation.copy(localPlayer.rotation);
-        if (localPlayer.avatar) {
-          group.position.y -= localPlayer.avatar.height;
-          group.position.y += 0.65;
-        }
-        localPlayer.getWorldDirection(dum)
-        dum = dum.normalize();
     
-        if (mesh) {
-            for (let i = 0; i < particleCount; i++) {
-                mesh.getMatrixAt(i, matrix);
-                position.setFromMatrixPosition(matrix); 
-                matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-                
-            
+    //     function addInstancedMesh() {
+    //         mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.45, 32,32), new THREE.MeshToonMaterial({color: 0xaaaaaa, transparent:true, depthWrite:false, opacity:0.7}), particleCount);
+    //         group.add(mesh);
+    //         app.add(group);
+    //         setInstancedMeshPositions(mesh);
+    //     }
+    //     let matrix = new THREE.Matrix4();
+    //     let position = new THREE.Vector3();
+    //     function setInstancedMeshPositions(mesh1) {
+    //         for (let i = 0; i < mesh1.count; i++) {
+    //             mesh.getMatrixAt(i, matrix);
+    //             dummy.scale.x = .00001;
+    //             dummy.scale.y = .00001;
+    //             dummy.scale.z = .00001;
+    //             dummy.position.x = (Math.random())*0.2;
+    //             dummy.position.y = -0.2;
+    //             dummy.position.z = Math.random()*5;
+    //             info.velocity[i] = (new THREE.Vector3(
+    //                 0,
+    //                 0,
+    //                 1));
+    //             info.velocity[i].divideScalar(20);
+    //             info.rotate[i] = new THREE.Vector3(
+    //                 Math.random() - 0.5,
+    //                 Math.random() - 0.5,
+    //                 Math.random() - 0.5);
+    //             dummy.updateMatrix();
+    //             mesh1.setMatrixAt(i, dummy.matrix);
+    //         }
+    //         mesh1.instanceMatrix.needsUpdate = true;
+    //     }
+    //     addInstancedMesh();
     
-                if (dummy.position.distanceTo(originPoint)>5) {
-                
-                    if(narutoRunTime>0){
-                        dummy.scale.x = .5;
-                        dummy.scale.y = .5;
-                        dummy.scale.z = .5;
-                    }
-                    else{
-                        dummy.scale.x = .00001;
-                        dummy.scale.y = .00001;
-                        dummy.scale.z = .00001;
-                    }
-                        
+        
+    //     let dum = new THREE.Vector3();
+    //     let originPoint = new THREE.Vector3(0,0,0);
+    //     useFrame(({timestamp}) => {
+    //         group.position.copy(localPlayer.position);
+    //         group.rotation.copy(localPlayer.rotation);
+    //         if (localPlayer.avatar) {
+    //           group.position.y -= localPlayer.avatar.height;
+    //           group.position.y += 0.2;
+    //         }
+    //         localPlayer.getWorldDirection(dum)
+    //         dum = dum.normalize();
+        
+    //         if (mesh) {
+    //             for (let i = 0; i < particleCount; i++) {
+    //                 mesh.getMatrixAt(i, matrix);
                     
-                    dummy.position.x = (Math.random()-0.5)*0.2;
-                    dummy.position.y = (Math.random()-0.5)*0.5;
-                    dummy.position.z = 0;
-                    info.velocity[i].x=(Math.random()-0.5)*4;
-                    info.velocity[i].y=(Math.random()-0.5)*4;
-                    info.velocity[i].z=10+Math.random();
-                    info.velocity[i].divideScalar(20);
-                }
-                
-                dummy.scale.x/=1.04;
-                dummy.scale.y/=1.04;
-                dummy.scale.z/=1.04;
-                
-                if(narutoRunTime==0){
-                    dummy.scale.x /= 1.1;
-                    dummy.scale.y /= 1.1;
-                    dummy.scale.z /= 1.1;
-                }
-                dummy.rotation.copy(camera.rotation);
-                if(localPlayer.rotation.x==0){
-                    dummy.rotation.y-=localPlayer.rotation.y;
-                }
-                else{
-                    dummy.rotation.y+=localPlayer.rotation.y;
-                }
-                
-                info.velocity[i].add(acc);
-                dummy.position.add(info.velocity[i]);
-                dummy.updateMatrix();
-                
-                mesh.setMatrixAt(i, dummy.matrix);
-                mesh.instanceMatrix.needsUpdate = true;
-    
-            }
-        }
-    group.updateMatrixWorld();
-    
-    });
-  }
-  //#################################### particle behind avatar 2 ###############################
-{
-
-    const group=new THREE.Group();
-    const particleCount = 5;
-    let info = {
-        velocity: [particleCount],
-        rotate: [particleCount]
-    }
-    const acc = new THREE.Vector3(0, -0, 0);
-
-    //######## object #########
-    let mesh = null;
-    let dummy = new THREE.Object3D();
-
-
-    function addInstancedMesh() {
-        mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 10,10), new THREE.MeshBasicMaterial({ transparent:true, depthWrite:false, opacity:1, blending:THREE.AdditiveBlending, side:THREE.DoubleSide}), particleCount);
-        group.add(mesh);
-        app.add(group);
-        setInstancedMeshPositions(mesh);
-    }
-    
-    let matrix = new THREE.Matrix4();
-    let position = new THREE.Vector3();
-    function setInstancedMeshPositions(mesh1) {
-        for (let i = 0; i < mesh1.count; i++) {
-            
-            mesh.getMatrixAt(i, matrix);
-            dummy.scale.x = .00001;
-            dummy.scale.y = .00001;
-            dummy.scale.z = .00001;
-            dummy.position.x = (Math.random())*0.2;
-            dummy.position.y = -0.2;
-            dummy.position.z = Math.random()*10;
-            info.velocity[i] = (new THREE.Vector3(
-                0,
-                0,
-                1));
-            info.velocity[i].divideScalar(20);
-            info.rotate[i] = new THREE.Vector3(
-                Math.random() - 0.5,
-                Math.random() - 0.5,
-                Math.random() - 0.5);
-            dummy.updateMatrix();
-            mesh1.setMatrixAt(i, dummy.matrix);
-        }
-        mesh1.instanceMatrix.needsUpdate = true;
-    }
-    addInstancedMesh();
-
-    
-    let dum = new THREE.Vector3();
-    let originPoint = new THREE.Vector3(0,0,0);
-    let color=new THREE.Color(1.0,1.0,1.0);
-    useFrame(({timestamp}) => {
-        group.position.copy(localPlayer.position);
-        group.rotation.copy(localPlayer.rotation);
-        if (localPlayer.avatar) {
-          group.position.y -= localPlayer.avatar.height;
-          group.position.y += 0.65;
-        }
-        localPlayer.getWorldDirection(dum)
-        dum = dum.normalize();
-    
-        if (mesh) {
-            for (let i = 0; i < particleCount; i++) {
-                mesh.getMatrixAt(i, matrix);
-                position.setFromMatrixPosition(matrix); 
-                matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-                
-            
-    
-                if (dummy.position.distanceTo(originPoint)>5) {
-                    mesh.setMatrixAt(i, matrix);
-                    mesh.setColorAt(i, color.set(0xffffff * Math.random()));
-                    mesh.instanceMatrix.needsUpdate = true;
-                    mesh.instanceColor.needsUpdate = true;
-                    if(narutoRunTime>0){
-                        dummy.scale.x = .5;
-                        dummy.scale.y = .5;
-                        dummy.scale.z = .5;
-                    }
-                    else{
-                        dummy.scale.x = .00001;
-                        dummy.scale.y = .00001;
-                        dummy.scale.z = .00001;
-                    }
-                        
                     
-                    dummy.position.x = (Math.random()-0.5)*0.2;
-                    dummy.position.y = (Math.random()-0.5)*0.2;
-                    dummy.position.z = 0;
-                    info.velocity[i].x=(Math.random()-0.5)*2;
-                    info.velocity[i].y=(Math.random()-0.5)*2;
-                    info.velocity[i].z=5+Math.random();
-                    info.velocity[i].divideScalar(20);
-                }
+    //                 position.setFromMatrixPosition(matrix); // extract position form transformationmatrix
+        
                 
-                dummy.scale.x/=1.01;
-                dummy.scale.y/=1.01;
-                dummy.scale.z/=1.01;
+    //                 matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+    //                 //dummy.rotation.y = timestamp/1000 * i ;
                 
-                if(narutoRunTime==0){
-                    dummy.scale.x /= 1.1;
-                    dummy.scale.y /= 1.1;
-                    dummy.scale.z /= 1.1;
-                }
-                dummy.rotation.copy(camera.rotation);
-                if(localPlayer.rotation.x==0){
-                    dummy.rotation.y-=localPlayer.rotation.y;
-                }
-                else{
-                    dummy.rotation.y+=localPlayer.rotation.y;
-                }
-                
-                info.velocity[i].add(acc);
-                dummy.position.add(info.velocity[i]);
-                dummy.updateMatrix();
-                
-                mesh.setMatrixAt(i, dummy.matrix);
-                mesh.instanceMatrix.needsUpdate = true;
-    
-            }
-        }
-    group.updateMatrixWorld();
-    
-    });
-  }
+        
+    //                 if (dummy.position.distanceTo(originPoint)>3) {
+    //                     // mesh.setMatrixAt(i, matrix);
+    //                     // mesh.setColorAt(i, new THREE.Color( 1.0,1.0,1.0 ));
+    //                     let temp=0.5+Math.random()*0.3;
+    //                     if(narutoRunTime>0 && !localPlayer.hasAction('jump')&& !localPlayer.hasAction('fly')){
+    //                         dummy.scale.x = .3;
+    //                         dummy.scale.y = .3;
+    //                         dummy.scale.z = .3;
+    //                     }
+    //                     else{
+    //                         dummy.scale.x = .00001;
+    //                         dummy.scale.y = .00001;
+    //                         dummy.scale.z = .00001;
+    //                     }
+                            
+                        
+    //                     dummy.position.x = (Math.random()-0.5)*0.2;
+    //                     dummy.position.y = -0.1+ (Math.random()-0.5)*0.2;
+    //                     dummy.position.z = 0;
+    //                     info.velocity[i].x=0;
+    //                     info.velocity[i].y=0;
+    //                     info.velocity[i].z=0.5+Math.random();
+    //                     info.velocity[i].divideScalar(20);
+    //                 }
+    //                 if(dummy.position.distanceTo(originPoint)<2.3){
+    //                     dummy.scale.x*=1.01;
+    //                     dummy.scale.y*=1.01;
+    //                     dummy.scale.z*=1.01;
+    //                 }
+    //                 else{
+    //                     dummy.scale.x/=1.04;
+    //                     dummy.scale.y/=1.04;
+    //                     dummy.scale.z/=1.04;
+    //                 }
+    //                 if(narutoRunTime==0 ||  localPlayer.hasAction('jump') ||  localPlayer.hasAction('fly')){
+    //                     dummy.scale.x /= 1.1;
+    //                     dummy.scale.y /= 1.1;
+    //                     dummy.scale.z /= 1.1;
+    //                 }
+    //                 info.velocity[i].add(acc);
+    //                 dummy.position.add(info.velocity[i]);
+    //                 dummy.updateMatrix();
+                    
+    //                 mesh.setMatrixAt(i, dummy.matrix);
+    //                 mesh.instanceMatrix.needsUpdate = true;
+        
+    //             }
+        
+        
+    //         }
+    //     group.updateMatrixWorld();
+        
+    //     });
+    // }
+
     
     //################################ particle #########################################
     {
@@ -1713,118 +1988,7 @@ export default () => {
         
         // });
     }
-    
-    //########################################## wind #############################################
-    {
-        const group = new THREE.Group();
-        const vertrun = `
-            ${THREE.ShaderChunk.common}
-            ${THREE.ShaderChunk.logdepthbuf_pars_vertex}
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                vec3 pos = vec3(position.x,position.y,position.z);
-                gl_Position = projectionMatrix * modelViewMatrix * vec4( pos, 1.0 );
-                ${THREE.ShaderChunk.logdepthbuf_vertex}
-            }
-        `;
-
-        const fragrun = `
-            ${THREE.ShaderChunk.logdepthbuf_pars_fragment}
-            varying vec2 vUv;
-            uniform sampler2D perlinnoise;
-            uniform vec3 color4;
-            uniform float uTime;
-            varying vec3 vNormal;
-            vec3 rgbcol(vec3 col) {
-                return vec3(col.r/255.,col.g/255.,col.b/255.);
-            }
-            void main() {
-                vec3 noisetex = texture2D(
-                    perlinnoise,
-                    vec2(
-                        mod(1.*vUv.x+(2.),1.),
-                        mod(.5*vUv.y+(40.*uTime),1.)
-                        
-                    )
-                ).rgb;      
-                gl_FragColor = vec4(noisetex.rgb,1.0);
-                if(gl_FragColor.r >= 0.8){
-                    gl_FragColor = vec4(vec3(1.,1.,1.),(0.9-vUv.y)/2.);
-                }else{
-                    gl_FragColor = vec4(0.,0.,1.,0.);
-                }
-                gl_FragColor *= vec4(smoothstep(0.2,0.628,vUv.y));
-                ${THREE.ShaderChunk.logdepthbuf_fragment}
-            
-                
-            }
-        `;
-        let windMaterial;
-        function windEffect() {
-            const geometry = new THREE.CylinderBufferGeometry(0.5, 0.9, 5.3, 50, 50, true);
-            windMaterial = new THREE.ShaderMaterial({
-                uniforms: {
-                    perlinnoise: {
-                        type: "t",
-                        value:wave2
-                    },
-                    color4: {
-                        value: new THREE.Vector3(200, 200, 200)
-                    },
-                    uTime: {
-                        type: "f",
-                        value: 0.0
-                    },
-                },
-                // wireframe:true,
-                vertexShader: vertrun,
-                fragmentShader: fragrun,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
-            });
-            const material = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
-            const mesh = new THREE.Mesh(geometry, windMaterial);
-            mesh.setRotationFromAxisAngle( new THREE.Vector3( 1, 0, 0 ), -90 * Math.PI / 180 );
-            
-            group.add(mesh);
-           
-            // mesh.scale.set(1.5, 1.7, 1.5);
-            app.add(group);
-        }
-        windEffect();
-        
-        
-        let dum = new THREE.Vector3();
-        useFrame(({timestamp}) => {
-            group.position.copy(localPlayer.position);
-            if (localPlayer.avatar) {
-                group.position.y -= localPlayer.avatar.height;
-                group.position.y += 0.65;
-            }
-            group.rotation.copy(localPlayer.rotation);
-
-            
-            localPlayer.getWorldDirection(dum)
-            dum = dum.normalize();
-            group.position.x+=2.2*dum.x;
-            group.position.z+=2.2*dum.z;
-            if(narutoRunTime>10){
-                group.scale.set(1,1,1);
-                
-            }
-            else{
-                group.scale.set(0,0,0);
-            }
-            
-            windMaterial.uniforms.uTime.value=timestamp/10000;
-            
-            app.updateMatrixWorld();
-
-        });
-    }
+   
     //############################ rainbow tube #############################################
     {
         // const material = new THREE.ShaderMaterial({
@@ -1998,8 +2162,3 @@ export default () => {
         // });
     }
     
-
-    app.setComponent('renderPriority', 'low');
-
-    return app;
-};
